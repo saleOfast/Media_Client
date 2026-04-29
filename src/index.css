@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+button,
+a,
+select,
+input[type="checkbox"],
+input[type="radio"],
+input[type="button"],
+input[type="submit"],
+[role="button"] {
+  cursor: pointer;
+}
