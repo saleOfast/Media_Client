@@ -16,7 +16,7 @@ const ObjectManager = () => {
     }, []);
 
     return (
-        <div className="w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm h-100">
             <div className="flex items-start justify-between">
                 <div>
                     <p className="text-[17px] font-semibold text-black">Object Management</p>

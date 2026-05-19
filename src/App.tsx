@@ -1,9 +1,11 @@
 import AppRoutes from "./routes/AppRoutes"
+import { ToastProvider } from "./components/ToastProvider"
+
 const App = () => {
   return (
-    <div>
+    <ToastProvider>
       <AppRoutes />
-    </div>
+    </ToastProvider>
   )
 }
 

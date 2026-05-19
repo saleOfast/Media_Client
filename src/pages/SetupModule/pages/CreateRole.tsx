@@ -1,41 +1,90 @@
 import { ArrowLeft, Save } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { createRoleEntry, loadRoles, saveRoles } from "./roleData";
+import { fetchProfiles, type ProfileApiItem } from "../../../api/profiles";
+import { createRole, fetchRoles, getRoleId, getRoleName, type RoleApiItem } from "../../../api/roles";
+import { useToast } from "../../../components/ToastProvider";
 
-const profileOptions = [
-    "Sales Profile",
-    "Operations Profile",
-    "Finance Profile",
-    "Admin Profile",
-];
+const ROOT_PARENT_VALUE = "";
+
+function getProfileId(item: ProfileApiItem): string {
+    return String(item.id ?? "");
+}
+
+function getProfileName(item: ProfileApiItem): string {
+    return String(item.name ?? item.id ?? "—");
+}
 
 const CreateRole = () => {
     const navigate = useNavigate();
+    const { showToast } = useToast();
     const [roleName, setRoleName] = useState("");
-    const [reportsTo, setReportsTo] = useState("Top Level (Root)");
-    const [linkedProfile, setLinkedProfile] = useState("");
+    const [parentRoleId, setParentRoleId] = useState(ROOT_PARENT_VALUE);
+    const [linkedProfileId, setLinkedProfileId] = useState("");
     const [description, setDescription] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
+    const [submitting, setSubmitting] = useState(false);
+    const [parentRoles, setParentRoles] = useState<RoleApiItem[]>([]);
+    const [profiles, setProfiles] = useState<ProfileApiItem[]>([]);
+    const [optionsLoading, setOptionsLoading] = useState(true);
+    const [optionsError, setOptionsError] = useState<string | null>(null);
 
-    const onCreateRole = (event: FormEvent<HTMLFormElement>) => {
+    useEffect(() => {
+        let cancelled = false;
+        void (async () => {
+            setOptionsLoading(true);
+            setOptionsError(null);
+            try {
+                const [rolesResult, profilesResult] = await Promise.all([
+                    fetchRoles().catch(() => [] as RoleApiItem[]),
+                    fetchProfiles(),
+                ]);
+                if (cancelled) {
+                    return;
+                }
+                setParentRoles(rolesResult);
+                setProfiles(profilesResult);
+            } catch (error) {
+                if (!cancelled) {
+                    setOptionsError(
+                        error instanceof Error ? error.message : "Failed to load form options"
+                    );
+                }
+            } finally {
+                if (!cancelled) {
+                    setOptionsLoading(false);
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const onCreateRole = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
+        setErrorMessage("");
 
-        if (!roleName.trim() || !linkedProfile) {
+        if (!roleName.trim() || !linkedProfileId) {
             setErrorMessage("Please fill all required fields.");
             return;
         }
 
-        const existingRoles = loadRoles();
-        const createdRole = createRoleEntry({
-            roleName: roleName.trim(),
-            reportsTo,
-            linkedProfile,
-            description: description.trim(),
-        });
-
-        saveRoles([createdRole, ...existingRoles]);
-        navigate("/setup/role");
+        setSubmitting(true);
+        try {
+            await createRole({
+                name: roleName.trim(),
+                description: description.trim(),
+                parentRoleId: parentRoleId || null,
+                linkedProfileId,
+            });
+            showToast("Role created successfully");
+            navigate("/setup/role");
+        } catch (error) {
+            setErrorMessage(error instanceof Error ? error.message : "Failed to create role");
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -48,6 +97,7 @@ const CreateRole = () => {
                     </p>
                 </div>
                 <button
+                    type="button"
                     className="text-[11px] px-2.5 py-1.5 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-100"
                     onClick={() => navigate("/setup/role")}
                 >
@@ -58,6 +108,10 @@ const CreateRole = () => {
                 </button>
             </div>
 
+            {optionsError ? (
+                <p className="mt-3 text-[11px] text-amber-700">{optionsError}</p>
+            ) : null}
+
             <form className="mt-4 space-y-3" onSubmit={onCreateRole}>
                 <div>
                     <label className="block text-[11px] font-medium text-slate-700 mb-1">
@@ -66,9 +120,10 @@ const CreateRole = () => {
                     <input
                         type="text"
                         className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500"
-                        placeholder="e.g. Senior Sales Rep"
+                        placeholder="e.g. Sales Manager"
                         value={roleName}
                         onChange={(event) => setRoleName(event.target.value)}
+                        disabled={submitting}
                     />
                 </div>
 
@@ -78,15 +133,22 @@ const CreateRole = () => {
                     </label>
                     <select
                         className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500"
-                        value={reportsTo}
-                        onChange={(event) => setReportsTo(event.target.value)}
+                        value={parentRoleId}
+                        onChange={(event) => setParentRoleId(event.target.value)}
+                        disabled={submitting || optionsLoading}
                     >
-                        <option value="Top Level (Root)">Top Level (Root)</option>
-                        {loadRoles().map((role) => (
-                            <option key={role.id} value={role.roleName}>
-                                {role.roleName}
-                            </option>
-                        ))}
+                        <option value={ROOT_PARENT_VALUE}>Top Level (Root)</option>
+                        {parentRoles.map((role) => {
+                            const id = getRoleId(role);
+                            if (!id) {
+                                return null;
+                            }
+                            return (
+                                <option key={id} value={id}>
+                                    {getRoleName(role)}
+                                </option>
+                            );
+                        })}
                     </select>
                 </div>
 
@@ -96,15 +158,22 @@ const CreateRole = () => {
                     </label>
                     <select
                         className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500"
-                        value={linkedProfile}
-                        onChange={(event) => setLinkedProfile(event.target.value)}
+                        value={linkedProfileId}
+                        onChange={(event) => setLinkedProfileId(event.target.value)}
+                        disabled={submitting || optionsLoading}
                     >
                         <option value="">-- Select Profile --</option>
-                        {profileOptions.map((profile) => (
-                            <option key={profile} value={profile}>
-                                {profile}
-                            </option>
-                        ))}
+                        {profiles.map((profile) => {
+                            const id = getProfileId(profile);
+                            if (!id) {
+                                return null;
+                            }
+                            return (
+                                <option key={id} value={id}>
+                                    {getProfileName(profile)}
+                                </option>
+                            );
+                        })}
                     </select>
                 </div>
 
@@ -117,6 +186,7 @@ const CreateRole = () => {
                         placeholder="Short role description"
                         value={description}
                         onChange={(event) => setDescription(event.target.value)}
+                        disabled={submitting}
                     />
                 </div>
 
@@ -127,11 +197,12 @@ const CreateRole = () => {
                 <div className="pt-1">
                     <button
                         type="submit"
-                        className="text-[11px] px-3 py-1.5 bg-slate-900 text-white rounded-md hover:bg-slate-800 transition"
+                        className="text-[11px] px-3 py-1.5 bg-slate-900 text-white rounded-md hover:bg-slate-800 transition disabled:opacity-60"
+                        disabled={submitting || optionsLoading}
                     >
                         <span className="inline-flex items-center gap-1">
                             <Save size={13} />
-                            Create Role
+                            {submitting ? "Creating..." : "Create Role"}
                         </span>
                     </button>
                 </div>

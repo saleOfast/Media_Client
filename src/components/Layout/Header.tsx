@@ -1,9 +1,79 @@
-import { useState } from "react";
-import { NavLink } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
+import { clearAuthSession, getStoredUser } from "../../lib/authStorage";
+
+function initialsFromDisplayName(name: string): string {
+    const trimmed = name.trim();
+    if (!trimmed) {
+        return "?";
+    }
+    const parts = trimmed.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) {
+        const single = parts[0];
+        if (single.includes("@")) {
+            return single.slice(0, 2).toUpperCase();
+        }
+        return single.slice(0, 2).toUpperCase();
+    }
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 const Header = () => {
+    const navigate = useNavigate();
     const [search, setSearch] = useState("");
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const userMenuRef = useRef<HTMLDivElement>(null);
+
+    const storedUser = useMemo(() => getStoredUser(), []);
+    const displayName = storedUser?.displayName ?? "User";
+    const roleBadge = storedUser?.role?.trim() ?? "";
+    const avatarInitials = initialsFromDisplayName(displayName);
+
+    useEffect(() => {
+        if (!dropdownOpen) {
+            return;
+        }
+
+        const closeIfOutside = (event: MouseEvent) => {
+            const node = userMenuRef.current;
+            if (node && !node.contains(event.target as Node)) {
+                setDropdownOpen(false);
+            }
+        };
+
+        const onEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setDropdownOpen(false);
+            }
+        };
+
+        const timerId = window.setTimeout(() => {
+            document.addEventListener("mousedown", closeIfOutside);
+            document.addEventListener("keydown", onEscape);
+        }, 0);
+
+        return () => {
+            window.clearTimeout(timerId);
+            document.removeEventListener("mousedown", closeIfOutside);
+            document.removeEventListener("keydown", onEscape);
+        };
+    }, [dropdownOpen]);
+
+    const handleLogout = () => {
+        clearAuthSession();
+        setDropdownOpen(false);
+        navigate("/login", { replace: true });
+    };
+
+    const goMyProfile = () => {
+        setDropdownOpen(false);
+        navigate("/me/profile");
+    };
+
+    const goSettings = () => {
+        setDropdownOpen(false);
+        navigate("/setup");
+    };
 
     return (
         <header className="w-full bg-white border-b border-gray-200 shadow-sm ">
@@ -34,7 +104,10 @@ const Header = () => {
                             placeholder="Search Engage Outdoor CRM..."
                             className="border border-gray-300 rounded-l text-[11px] px-3 py-1 w-56 focus:outline-none focus:border-blue-500 h-6"
                         />
-                        <button className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 h-6 rounded-r font-medium transition-colors">
+                        <button
+                            type="button"
+                            className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 h-6 rounded-r font-medium transition-colors"
+                        >
                             Go!
                         </button>
                     </div>
@@ -44,7 +117,7 @@ const Header = () => {
                 <div className="flex items-center gap-4">
 
                     {/* Setup link */}
-                    <button className="flex items-center gap-1 text-sm text-gray-600 hover:text-blue-600 transition-colors">
+                    <button type="button" className="flex items-center gap-1 text-sm text-gray-600 hover:text-blue-600 transition-colors">
                         <svg
                             className="w-4 h-4 text-gray-500"
                             fill="none"
@@ -65,69 +138,96 @@ const Header = () => {
                     {/* Divider */}
                     <div className="w-px h-6 bg-gray-300" />
 
-                    {/* User icon dropdown (left side) */}
-                    <div className="relative ">
+                    {/* User menu: both triggers + dropdown; ref used for outside-click close */}
+                    <div ref={userMenuRef} className="flex items-center gap-3">
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setDropdownOpen((open) => !open)}
+                                aria-expanded={dropdownOpen}
+                                aria-haspopup="menu"
+                                className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 transition-colors"
+                            >
+                                <svg
+                                    className="w-4 h-4 text-gray-500"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth={1.8}
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                    />
+                                </svg>
+                                <span className="text-[11px] max-w-[140px] truncate">{displayName}</span>
+                                <svg
+                                    className={`w-3 h-3 text-gray-500 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth={2}
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+
+                            {dropdownOpen ? (
+                                <div
+                                    className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded shadow-lg z-50 py-1"
+                                    role="menu"
+                                >
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                        onClick={goMyProfile}
+                                    >
+                                        My Profile
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                        onClick={goSettings}
+                                    >
+                                        Settings
+                                    </button>
+                                    <div className="border-t border-gray-100 my-1" />
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-50"
+                                        onClick={handleLogout}
+                                    >
+                                        Logout
+                                    </button>
+                                </div>
+                            ) : null}
+                        </div>
+
+                        <div className="w-px h-6 bg-gray-300" />
+
                         <button
-                            onClick={() => setDropdownOpen(!dropdownOpen)}
-                            className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-blue-600 transition-colors"
+                            type="button"
+                            onClick={() => setDropdownOpen((open) => !open)}
+                            aria-expanded={dropdownOpen}
+                            aria-haspopup="menu"
+                            className="flex items-center gap-2 rounded-md px-1 py-0.5 text-left hover:bg-gray-50 transition-colors"
                         >
-                            <svg
-                                className="w-4 h-4 text-gray-500"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth={1.8}
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                                />
-                            </svg>
-                            <span className="text-[11px]">Rahul Kumar</span>
-                            <svg
-                                className={`w-3 h-3 text-gray-500 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth={2}
-                                viewBox="0 0 24 24"
-                            >
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </button>
-
-                        {/* Dropdown menu */}
-                        {dropdownOpen && (
-                            <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded shadow-lg z-50">
-                                <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                    My Profile
-                                </button>
-                                <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                    Settings
-                                </button>
-                                <div className="border-t border-gray-100" />
-                                <button className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-gray-50">
-                                    Logout
-                                </button>
+                            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                                {avatarInitials}
                             </div>
-                        )}
-                    </div>
-
-                    {/* Divider */}
-                    <div className="w-px h-6 bg-gray-300" />
-
-                    {/* Avatar + Name + Role (right side) */}
-                    <div className="flex items-center gap-2">
-                        {/* Avatar circle */}
-                        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-red-500 text-white text-xs font-bold shrink-0">
-                            RK
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-semibold text-blue-700">Rahul Kumar</span>
-                            <span className="text-xs text-gray-500 border border-gray-300 rounded px-1.5 py-0.5">
-                                System Admin
-                            </span>
-                        </div>
+                            <div className="flex flex-col items-start gap-0.5 min-w-0">
+                                <span className="max-w-[120px] truncate text-[11px] font-semibold text-blue-700">{displayName}</span>
+                                {roleBadge ? (
+                                    <span className="max-w-[100px] truncate text-[10px] text-gray-500 border border-gray-300 rounded px-1.5 py-0.5">
+                                        {roleBadge}
+                                    </span>
+                                ) : null}
+                            </div>
+                        </button>
                     </div>
 
                 </div>

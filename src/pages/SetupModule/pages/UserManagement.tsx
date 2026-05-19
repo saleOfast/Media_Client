@@ -79,7 +79,7 @@ const UserManagement = () => {
     );
 
     return (
-        <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm h-100">
 
             {/* Header */}
             <div className="flex items-center justify-between mb-3">
