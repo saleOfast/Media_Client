@@ -34,13 +34,11 @@ type CreateUserForm = {
     email: string;
     phone: string;
     mobile: string;
-    active: boolean;
     department: string;
     division: string;
     profileId: string;
     roleId: string;
     manager: string;
-    reportsTo: string;
     delegatedApprover: string;
     team: string;
     vertical: string;
@@ -86,13 +84,11 @@ const CreateUser = () => {
         email: "",
         phone: "",
         mobile: "",
-        active: true,
         department: "",
         division: "",
         profileId: "",
         roleId: "",
         manager: "",
-        reportsTo: "",
         delegatedApprover: "",
         team: "",
         vertical: "",
@@ -218,7 +214,6 @@ const CreateUser = () => {
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Name</label><input className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.name} onChange={(e) => updateForm("name", e.target.value)} disabled={submitting} /></div>
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Nickname</label><input className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.nickname} onChange={(e) => updateForm("nickname", e.target.value)} disabled={submitting} /></div>
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Username</label><input className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.username} onChange={(e) => updateForm("username", e.target.value)} disabled={submitting} /></div>
-                        <div className="flex items-end"><label className="flex items-center gap-2 text-[12px] text-slate-700"><input type="checkbox" checked={form.active} onChange={(e) => updateForm("active", e.target.checked)} disabled={submitting} />Active</label></div>
                     </div>
                 </div>
 
@@ -230,7 +225,6 @@ const CreateUser = () => {
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Profile *</label><select className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.profileId} onChange={(e) => updateForm("profileId", e.target.value)} disabled={submitting || optionsLoading}><option value="">Select Profile</option>{profiles.map((profile) => { const id = getProfileId(profile); if (!id) return null; return <option key={id} value={id}>{getProfileName(profile)}</option>; })}</select></div>
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Role</label><select className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.roleId} onChange={(e) => updateForm("roleId", e.target.value)} disabled={submitting || optionsLoading}><option value="">Select Role</option>{roles.map((role) => { const id = getRoleId(role); if (!id) return null; return <option key={id} value={id}>{getRoleName(role)}</option>; })}</select></div>
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Manager</label><select className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.manager} onChange={(e) => updateForm("manager", e.target.value)} disabled={submitting}><option value="">Select Manager</option>{userLookupOptions.map((item) => item ? <option key={item} value={item}>{item}</option> : null)}</select></div>
-                        <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Reports To</label><select className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.reportsTo} onChange={(e) => updateForm("reportsTo", e.target.value)} disabled={submitting}><option value="">Select Reports To</option>{userLookupOptions.map((item) => item ? <option key={`r-${item}`} value={item}>{item}</option> : null)}</select></div>
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Delegated Approver</label><select className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.delegatedApprover} onChange={(e) => updateForm("delegatedApprover", e.target.value)} disabled={submitting}><option value="">Select Delegated Approver</option>{userLookupOptions.map((item) => item ? <option key={`d-${item}`} value={item}>{item}</option> : null)}</select></div>
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Team</label><select className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.team} onChange={(e) => updateForm("team", e.target.value)} disabled={submitting}><option value="">Select Team</option>{teamOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Vertical</label><select className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.vertical} onChange={(e) => updateForm("vertical", e.target.value)} disabled={submitting}><option value="">Select Vertical</option>{verticalOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
