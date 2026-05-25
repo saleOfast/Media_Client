@@ -1,9 +1,14 @@
-import { useState, type FormEvent } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { loginRequest } from "../../api/auth";
-import { getToken, setStoredUser, setToken } from "../../lib/authStorage";
+import { getDefaultNavPath } from "../../lib/navConfig";
+import { setCredentials } from "../../store/authSlice";
+import { store } from "../../store";
+import { useAppDispatch, useAppSelector } from "../../store/hooks";
+import { selectIsAuthenticated } from "../../store/permissionSelectors";
 
 const Login = () => {
+    const dispatch = useAppDispatch();
     const navigate = useNavigate();
     const location = useLocation();
     const fromPath = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
@@ -13,32 +18,79 @@ const Login = () => {
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
-    if (getToken()) {
-        return <Navigate to="/home" replace />;
-    }
+    const isAuthenticated = useAppSelector(selectIsAuthenticated);
+    const hasRedirectedRef = useRef(false);
+
+    useEffect(() => {
+        if (!isAuthenticated) {
+            hasRedirectedRef.current = false;
+            return;
+        }
+
+        const { permissions } = store.getState().auth;
+        const target = getDefaultNavPath(permissions?.tabs ?? []);
+        const destination =
+            fromPath &&
+            fromPath !== "/login" &&
+            fromPath !== "/forgot-password" &&
+            fromPath !== "/reset-password"
+                ? fromPath
+                : target;
+
+        if (location.pathname === destination) {
+            hasRedirectedRef.current = true;
+            return;
+        }
+
+        if (hasRedirectedRef.current) {
+            return;
+        }
+        hasRedirectedRef.current = true;
+        navigate(destination, { replace: true });
+    }, [isAuthenticated, fromPath, location.pathname, navigate]);
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         setError(null);
         setLoading(true);
         try {
-            const { token, user } = await loginRequest({
+            const { token, user, permissions, canSetup } = await loginRequest({
                 identifier: identifier.trim(),
                 password,
             });
-            setToken(token);
-            setStoredUser({
-                ...user,
-                identifier: identifier.trim(),
-                email: user.email ?? (identifier.trim().includes("@") ? identifier.trim() : undefined),
-            });
-            navigate(fromPath && fromPath !== "/login" ? fromPath : "/home", { replace: true });
+            dispatch(
+                setCredentials({
+                    token,
+                    permissions,
+                    canSetup,
+                    user: {
+                        ...user,
+                        identifier: identifier.trim(),
+                        email:
+                            user.email ??
+                            (identifier.trim().includes("@") ? identifier.trim() : undefined),
+                    },
+                })
+            );
+            const defaultPath = getDefaultNavPath(permissions?.tabs ?? []);
+            navigate(
+                fromPath && fromPath !== "/login" ? fromPath : defaultPath,
+                { replace: true }
+            );
         } catch (err) {
             setError(err instanceof Error ? err.message : "Login failed");
         } finally {
             setLoading(false);
         }
     };
+
+    if (isAuthenticated) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-100 to-slate-200 px-4">
+                <p className="text-[13px] text-slate-600">Redirecting…</p>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-100 to-slate-200 px-4">
@@ -69,9 +121,17 @@ const Login = () => {
                         <p className="mt-1 text-[10px] text-slate-500">Usually your work email.</p>
                     </div>
                     <div>
-                        <label htmlFor="login-password" className="mb-1 block text-[11px] font-medium text-slate-700">
-                            Password
-                        </label>
+                        <div className="mb-1 flex items-center justify-between">
+                            <label htmlFor="login-password" className="text-[11px] font-medium text-slate-700">
+                                Password
+                            </label>
+                            <Link
+                                to="/forgot-password"
+                                className="text-[10px] font-medium text-blue-700 hover:underline"
+                            >
+                                Forgot password?
+                            </Link>
+                        </div>
                         <input
                             id="login-password"
                             type="password"

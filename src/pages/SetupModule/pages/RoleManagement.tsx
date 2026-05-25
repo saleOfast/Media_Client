@@ -262,7 +262,7 @@ const RoleManagement = () => {
     ];
 
     return (
-        <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm h-100">
+        <div className="h-full min-h-0 overflow-y-auto rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
             <div className="flex items-start justify-between">
                 <div>
                     <p className="text-[17px] font-semibold text-black">Role Management</p>

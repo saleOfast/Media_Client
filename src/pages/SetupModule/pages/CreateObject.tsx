@@ -25,10 +25,10 @@ const CreateObject = () => {
     const objectName = useMemo(() => toApiName(objectLabel), [objectLabel]);
 
     return (
-        <div className="w-full min-h-[calc(100vh-180px)] rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="h-full min-h-0 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between">
                 <div>
-                    <p className="text-[17px] font-semibold text-black">Create New Object</p>
+                    <p className="text-[17px] font-semibold text-black">Create</p>
                     <p className="text-[11px] text-black/70 mt-0.5">
                         Define a new custom object. Standard system fields will be added automatically. The object will
                         appear in all Profile Settings permissions.

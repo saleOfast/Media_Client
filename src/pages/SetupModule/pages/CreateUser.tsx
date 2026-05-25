@@ -1,4 +1,4 @@
-import { ArrowLeft, Save, UserPlus, X } from "lucide-react";
+import { ArrowLeft, Save } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchProfiles, type ProfileApiItem } from "../../../api/profiles";
@@ -54,6 +54,7 @@ type CreateUserForm = {
     timeZone: string;
     joiningDate: string;
     resignationDate: string;
+    isActive: boolean;
 };
 
 function getProfileId(item: ProfileApiItem): string {
@@ -104,6 +105,7 @@ const CreateUser = () => {
         timeZone: "",
         joiningDate: "",
         resignationDate: "",
+        isActive: true,
     });
 
     useEffect(() => {
@@ -174,7 +176,9 @@ const CreateUser = () => {
                 fullName,
             });
             await createUser(payload);
-            showToast("User created successfully");
+            showToast(
+                "User created successfully. A password setup email has been sent to their address."
+            );
             navigate("/setup");
         } catch (error) {
             setErrorMessage(error instanceof Error ? error.message : "Failed to create user");
@@ -184,26 +188,46 @@ const CreateUser = () => {
     };
 
     return (
-        <div className="w-full min-h-[calc(100vh-180px)] rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between">
-                <div>
-                    <p className="text-[16px] font-semibold text-black">👤 Create New User</p>
+        <div className="flex h-full min-h-0 w-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
+            <form className="flex h-full min-h-0 flex-col" onSubmit={onSaveUser}>
+                <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p className="text-[16px] font-semibold text-black">👤 Create New User</p>
+                            {optionsError ? (
+                                <p className="mt-1 text-[11px] text-amber-700">{optionsError}</p>
+                            ) : null}
+                            {errorMessage ? (
+                                <p className="mt-1 text-[11px] text-red-600">{errorMessage}</p>
+                            ) : null}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                className="rounded-md border border-slate-300 px-3 py-1.5 text-[11px] text-slate-700 hover:bg-slate-100 transition disabled:opacity-60"
+                                onClick={() => navigate("/setup")}
+                                disabled={submitting}
+                            >
+                                <span className="inline-flex items-center gap-1">
+                                    <ArrowLeft size={13} />
+                                    Cancel
+                                </span>
+                            </button>
+                            <button
+                                type="submit"
+                                className="rounded-md bg-slate-900 px-3 py-1.5 text-[11px] text-white hover:bg-slate-800 transition disabled:opacity-60"
+                                disabled={submitting || optionsLoading}
+                            >
+                                <span className="inline-flex items-center gap-1">
+                                    <Save size={13} />
+                                    {submitting ? "Creating..." : "Create"}
+                                </span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <button
-                    className="text-[14px] text-slate-500 hover:text-slate-800"
-                    onClick={() => navigate("/setup")}
-                    aria-label="Close create user page"
-                    type="button"
-                >
-                    <X size={16} />
-                </button>
-            </div>
 
-            {optionsError ? (
-                <p className="mt-3 text-[11px] text-amber-700">{optionsError}</p>
-            ) : null}
-
-            <form className="mt-4 space-y-4" onSubmit={onSaveUser}>
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden p-4">
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <p className="text-[12px] font-semibold text-black">Name & Identity</p>
                     <div className="mt-3 grid grid-cols-3 gap-3">
@@ -213,7 +237,38 @@ const CreateUser = () => {
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Full Name (Auto)</label><input className="w-full rounded-md border border-slate-300 bg-slate-100 px-3 py-2 text-[12px] text-slate-700 outline-none" value={fullName} readOnly /></div>
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Name</label><input className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.name} onChange={(e) => updateForm("name", e.target.value)} disabled={submitting} /></div>
                         <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Nickname</label><input className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.nickname} onChange={(e) => updateForm("nickname", e.target.value)} disabled={submitting} /></div>
-                        <div><label className="mb-1 block text-[11px] font-medium text-slate-700">Username</label><input className="w-full rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500" value={form.username} onChange={(e) => updateForm("username", e.target.value)} disabled={submitting} /></div>
+                        <div>
+                            <label
+                                htmlFor="create-user-username"
+                                className="mb-1 block text-[11px] font-medium text-slate-700"
+                            >
+                                Username
+                            </label>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    id="create-user-username"
+                                    className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-[12px] outline-none focus:border-slate-500"
+                                    value={form.username}
+                                    onChange={(e) => updateForm("username", e.target.value)}
+                                    disabled={submitting}
+                                />
+                                <label
+                                    htmlFor="create-user-active"
+                                    className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px] font-medium text-slate-700"
+                                >
+                                    <input
+                                        id="create-user-active"
+                                        type="checkbox"
+                                        checked={form.isActive}
+                                        onChange={(e) =>
+                                            updateForm("isActive", e.target.checked)
+                                        }
+                                        disabled={submitting}
+                                    />
+                                    Active
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -258,37 +313,6 @@ const CreateUser = () => {
                     </div>
                 </div>
 
-                {errorMessage ? <p className="text-[11px] text-red-600">{errorMessage}</p> : null}
-                <div className="flex items-center justify-between mt-4">
-                    <span className="text-[10px] text-slate-400 inline-flex items-center gap-1">
-                        <UserPlus size={12} />
-                        {optionsLoading ? "Loading profiles and roles…" : "Submit to create user via API"}
-                    </span>
-
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            className="text-[11px] px-3 py-1.5 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-100 transition"
-                            onClick={() => navigate("/setup")}
-                            disabled={submitting}
-                        >
-                            <span className="inline-flex items-center gap-1">
-                                <ArrowLeft size={13} />
-                                Cancel
-                            </span>
-                        </button>
-
-                        <button
-                            type="submit"
-                            className="text-[11px] px-3 py-1.5 bg-slate-900 text-white rounded-md hover:bg-slate-800 transition disabled:opacity-60"
-                            disabled={submitting || optionsLoading}
-                        >
-                            <span className="inline-flex items-center gap-1">
-                                <Save size={13} />
-                                {submitting ? "Creating..." : "Submit"}
-                            </span>
-                        </button>
-                    </div>
                 </div>
             </form>
         </div>

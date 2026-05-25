@@ -1,14 +1,15 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { getToken } from "../lib/authStorage";
+import { useAppSelector } from "../store/hooks";
+import { selectIsAuthenticated } from "../store/permissionSelectors";
 
 /**
  * Wrap routes that require a stored auth token. Redirects to `/login` when missing.
  */
 const RequireAuth = () => {
     const location = useLocation();
-    const token = getToken();
+    const isAuthenticated = useAppSelector(selectIsAuthenticated);
 
-    if (!token) {
+    if (!isAuthenticated) {
         return <Navigate to="/login" replace state={{ from: location }} />;
     }
 

@@ -1,7 +1,6 @@
 import {
     Activity,
     Database,
-    KeyRound,
     Shield,
     UserPlus,
     Users,
@@ -10,15 +9,34 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fetchProfiles } from "../../../api/profiles";
 import { fetchRoles, getRoleId, getRoleName } from "../../../api/roles";
-import { fetchUsers, mapUserApiItemsToRows, type UserRow } from "../../../api/users";
+import { deleteUser, fetchUsers, mapUserApiItemsToRows, type UserRow } from "../../../api/users";
 import DynamicTable from "../../../components/DynamicTable";
+import { useToast } from "../../../components/ToastProvider";
+import { useAppSelector } from "../../../store/hooks";
+import {
+    canCreateOnTable,
+    canDeleteOnTable,
+    canEditOnTable,
+    selectIsSetupAdministrator,
+} from "../../../store/permissionSelectors";
 import type { Column } from "../../../Types/Table";
+
+const USERS_TABLE = "users";
 
 const UserManagement = () => {
     const navigate = useNavigate();
+    const { showToast } = useToast();
+    const permissions = useAppSelector((state) => state.auth.permissions);
+    const isSetupAdmin = useAppSelector(selectIsSetupAdministrator);
+    const canCreate = canCreateOnTable(permissions, USERS_TABLE, isSetupAdmin);
+    const canEdit = canEditOnTable(permissions, USERS_TABLE, isSetupAdmin);
+    const canDelete = canDeleteOnTable(permissions, USERS_TABLE, isSetupAdmin);
     const [users, setUsers] = useState<UserRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [listError, setListError] = useState<string | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
+    const [deleteSaving, setDeleteSaving] = useState(false);
+    const [deleteError, setDeleteError] = useState("");
 
     const loadUserList = useCallback(async () => {
         setLoading(true);
@@ -59,9 +77,39 @@ const UserManagement = () => {
         void loadUserList();
     }, [loadUserList]);
 
+    const submitDelete = async () => {
+        if (!deleteTarget) {
+            return;
+        }
+        setDeleteSaving(true);
+        setDeleteError("");
+        try {
+            await deleteUser(deleteTarget.id);
+            showToast("User deleted successfully");
+            setDeleteTarget(null);
+            await loadUserList();
+        } catch (error) {
+            setDeleteError(error instanceof Error ? error.message : "Failed to delete user");
+        } finally {
+            setDeleteSaving(false);
+        }
+    };
+
     const userColumns: Column<UserRow>[] = useMemo(
         () => [
-            { title: "User", dataIndex: "user" },
+            {
+                title: "User",
+                dataIndex: "user",
+                render: (value, row) => (
+                    <button
+                        type="button"
+                        className="text-left text-blue-700 hover:underline font-medium"
+                        onClick={() => navigate(`/setup/user/${row.id}`)}
+                    >
+                        {String(value)}
+                    </button>
+                ),
+            },
             { title: "Username", dataIndex: "username" },
             { title: "Email", dataIndex: "email" },
             { title: "Department", dataIndex: "department" },
@@ -99,10 +147,47 @@ const UserManagement = () => {
             },
             {
                 title: "Actions",
-                render: () => <span className="text-blue-700">Edit | Disable | View</span>,
+                render: (_value, row) => (
+                    <span className="text-blue-700">
+                        <button
+                            type="button"
+                            className="hover:underline"
+                            onClick={() => navigate(`/setup/user/${row.id}`)}
+                        >
+                            View
+                        </button>
+                        {canEdit ? (
+                            <>
+                                <span className="text-black/40 px-1">|</span>
+                                <button
+                                    type="button"
+                                    className="hover:underline"
+                                    onClick={() => navigate(`/setup/user/${row.id}/edit`)}
+                                >
+                                    Edit
+                                </button>
+                            </>
+                        ) : null}
+                        {canDelete ? (
+                            <>
+                                <span className="text-black/40 px-1">|</span>
+                                <button
+                                    type="button"
+                                    className="hover:underline text-red-700"
+                                    onClick={() => {
+                                        setDeleteError("");
+                                        setDeleteTarget(row);
+                                    }}
+                                >
+                                    Delete
+                                </button>
+                            </>
+                        ) : null}
+                    </span>
+                ),
             },
         ],
-        []
+        [canDelete, canEdit, navigate]
     );
 
     const totalUsers = users.length;
@@ -115,7 +200,7 @@ const UserManagement = () => {
         [users]
     );
     return (
-        <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm h-100">
+        <div className="h-full min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
                 <div>
                     <p className="text-[16px] font-semibold text-slate-800 tracking-wide">
@@ -135,16 +220,18 @@ const UserManagement = () => {
                     >
                         {loading ? "Loading..." : "Refresh"}
                     </button> */}
-                    <button
-                        type="button"
-                        className="text-[11px] px-3 py-1.5 bg-slate-900 text-white rounded-md hover:bg-slate-800 transition"
-                        onClick={() => navigate("/setup/user/create")}
-                    >
-                        <span className="inline-flex items-center gap-1">
-                            <UserPlus size={14} />
-                            Create
-                        </span>
-                    </button>
+                    {canCreate ? (
+                        <button
+                            type="button"
+                            className="text-[11px] px-3 py-1.5 bg-slate-900 text-white rounded-md hover:bg-slate-800 transition"
+                            onClick={() => navigate("/setup/user/create")}
+                        >
+                            <span className="inline-flex items-center gap-1">
+                                <UserPlus size={14} />
+                                Create
+                            </span>
+                        </button>
+                    ) : null}
 
                     {/* <button
                         type="button"
@@ -214,6 +301,63 @@ const UserManagement = () => {
                     emptyText={loading ? "Loading users..." : "No users found"}
                 />
             </div>
+
+            {deleteTarget ? (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                    role="presentation"
+                    onMouseDown={(event) => {
+                        if (event.target === event.currentTarget) {
+                            setDeleteTarget(null);
+                            setDeleteError("");
+                        }
+                    }}
+                >
+                    <div
+                        className="w-full max-w-sm rounded-xl border border-slate-200 bg-white shadow-lg"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="delete-user-list-title"
+                        onMouseDown={(event) => event.stopPropagation()}
+                    >
+                        <div className="border-b border-slate-200 px-4 py-3">
+                            <p id="delete-user-list-title" className="text-[13px] font-semibold text-black">
+                                Delete user?
+                            </p>
+                            <p className="text-[11px] text-black/70 mt-1">
+                                This will remove{" "}
+                                <span className="font-medium">{deleteTarget.user}</span> permanently.
+                            </p>
+                        </div>
+                        {deleteError ? (
+                            <div className="px-4 py-2">
+                                <p className="text-[11px] text-red-600">{deleteError}</p>
+                            </div>
+                        ) : null}
+                        <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3">
+                            <button
+                                type="button"
+                                className="text-[11px] px-3 py-1.5 rounded-md border border-slate-300 text-black hover:bg-slate-50"
+                                onClick={() => {
+                                    setDeleteTarget(null);
+                                    setDeleteError("");
+                                }}
+                                disabled={deleteSaving}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="text-[11px] px-3 py-1.5 rounded-md bg-black text-white hover:bg-black/90 disabled:opacity-50"
+                                onClick={() => void submitDelete()}
+                                disabled={deleteSaving}
+                            >
+                                {deleteSaving ? "Deleting…" : "Delete"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 };

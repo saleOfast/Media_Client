@@ -108,6 +108,7 @@ export type CreateUserPayload = {
     timeZone?: string;
     joiningDate?: string;
     resignationDate?: string;
+    isActive?: boolean;
 };
 
 async function parseResponseBody(response: Response): Promise<unknown> {
@@ -256,6 +257,119 @@ export function mapUserApiItemToRow(
     };
 }
 
+function unwrapUserItem(body: unknown): UserApiItem {
+    if (body && typeof body === "object") {
+        const record = body as Record<string, unknown>;
+        const data = record.data;
+        if (data && typeof data === "object" && !Array.isArray(data)) {
+            return data as UserApiItem;
+        }
+        if (record.id || record.email) {
+            return record as UserApiItem;
+        }
+    }
+    return {};
+}
+
+function userByIdUrl(userId: string): string {
+    return `${USERS_URL}/${encodeURIComponent(userId)}`;
+}
+
+export type UpdateUserPayload = CreateUserPayload;
+
+export type UserFormState = {
+    firstName: string;
+    middleName: string;
+    lastName: string;
+    name: string;
+    username: string;
+    nickname: string;
+    email: string;
+    phone: string;
+    mobile: string;
+    department: string;
+    division: string;
+    profileId: string;
+    roleId: string;
+    manager: string;
+    delegatedApproverId: string;
+    team: string;
+    vertical: string;
+    country: string;
+    stateProvince: string;
+    region: string;
+    city: string;
+    zipPostalCode: string;
+    street: string;
+    employeeId: string;
+    title: string;
+    language: string;
+    timeZone: string;
+    joiningDate: string;
+    resignationDate: string;
+};
+
+function toFormString(value: unknown): string {
+    if (value === null || value === undefined) {
+        return "";
+    }
+    return String(value).trim();
+}
+
+function toFormDate(value: unknown): string {
+    if (typeof value !== "string" || !value.trim()) {
+        return "";
+    }
+    const trimmed = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+        return trimmed.slice(0, 10);
+    }
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+        return trimmed;
+    }
+    return parsed.toISOString().slice(0, 10);
+}
+
+function optionalPayloadValue(value: string): string | null {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+}
+
+export function mapUserApiItemToForm(item: UserApiItem): UserFormState {
+    return {
+        firstName: toFormString(item.firstName),
+        middleName: toFormString(item.middleName),
+        lastName: toFormString(item.lastName),
+        name: toFormString(item.name),
+        username: toFormString(item.username),
+        nickname: toFormString(item.nickname),
+        email: toFormString(item.email),
+        phone: toFormString(item.phone),
+        mobile: toFormString(item.mobile),
+        department: toFormString(item.department),
+        division: toFormString(item.division),
+        profileId: toFormString(item.profileId),
+        roleId: toFormString(item.roleId),
+        manager: toFormString(item.manager),
+        delegatedApproverId: toFormString(item.delegatedApproverId),
+        team: toFormString(item.team),
+        vertical: toFormString(item.vertical),
+        country: toFormString(item.country),
+        stateProvince: toFormString(item.stateProvince),
+        region: toFormString(item.region),
+        city: toFormString(item.city),
+        zipPostalCode: toFormString(item.zipPostalCode),
+        street: toFormString(item.street),
+        employeeId: toFormString(item.employeeId),
+        title: toFormString(item.title),
+        language: toFormString(item.language),
+        timeZone: toFormString(item.timeZone),
+        joiningDate: toFormDate(item.joiningDate),
+        resignationDate: toFormDate(item.resignationDate),
+    };
+}
+
 export async function fetchUsers(): Promise<UserApiItem[]> {
     const response = await fetch(USERS_URL, {
         method: "GET",
@@ -267,6 +381,46 @@ export async function fetchUsers(): Promise<UserApiItem[]> {
     }
     const body = await parseResponseBody(response);
     return unwrapUserArray(body);
+}
+
+export async function fetchUserById(userId: string): Promise<UserApiItem> {
+    const response = await fetch(userByIdUrl(userId), {
+        method: "GET",
+        headers: authHeaders(),
+    });
+    if (!response.ok) {
+        const body = await parseResponseBody(response);
+        throw new Error(formatApiError(body, `Failed to load user (${response.status})`));
+    }
+    const body = await parseResponseBody(response);
+    return unwrapUserItem(body);
+}
+
+export async function updateUser(
+    userId: string,
+    payload: UpdateUserPayload | Record<string, unknown>
+): Promise<unknown> {
+    const response = await fetch(userByIdUrl(userId), {
+        method: "PATCH",
+        headers: jsonHeaders(),
+        body: JSON.stringify(payload),
+    });
+    const body = await parseResponseBody(response);
+    if (!response.ok) {
+        throw new Error(formatApiError(body, `Failed to update user (${response.status})`));
+    }
+    return body;
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+    const response = await fetch(userByIdUrl(userId), {
+        method: "DELETE",
+        headers: authHeaders(),
+    });
+    if (!response.ok) {
+        const body = await parseResponseBody(response);
+        throw new Error(formatApiError(body, `Failed to delete user (${response.status})`));
+    }
 }
 
 export function buildCreateUserPayload(input: {
@@ -300,6 +454,7 @@ export function buildCreateUserPayload(input: {
     timeZone: string;
     joiningDate: string;
     resignationDate: string;
+    isActive?: boolean;
 }): CreateUserPayload {
     const payload: CreateUserPayload = {
         firstName: input.firstName.trim(),
@@ -308,6 +463,7 @@ export function buildCreateUserPayload(input: {
         department: input.department.trim(),
         profileId: input.profileId,
         roleId: input.roleId.trim() ? input.roleId.trim() : null,
+        isActive: input.isActive !== false,
     };
 
     const optionalStringFields: Array<keyof CreateUserPayload> = [
@@ -385,4 +541,48 @@ export async function createUser(payload: CreateUserPayload): Promise<unknown> {
         throw new Error(formatApiError(body, `Failed to create user (${response.status})`));
     }
     return body;
+}
+
+export function buildUpdateUserPayload(
+    input: UserFormState & { fullName: string }
+): Record<string, unknown> {
+    const fullName =
+        input.fullName.trim() ||
+        [input.firstName, input.middleName, input.lastName]
+            .map((part) => part.trim())
+            .filter(Boolean)
+            .join(" ");
+
+    return {
+        firstName: input.firstName.trim(),
+        middleName: optionalPayloadValue(input.middleName),
+        lastName: input.lastName.trim(),
+        fullName: fullName || null,
+        name: optionalPayloadValue(input.name),
+        username: optionalPayloadValue(input.username),
+        nickname: optionalPayloadValue(input.nickname),
+        email: input.email.trim().toLowerCase(),
+        phone: optionalPayloadValue(input.phone),
+        mobile: optionalPayloadValue(input.mobile),
+        department: input.department.trim(),
+        division: optionalPayloadValue(input.division),
+        profileId: input.profileId.trim(),
+        roleId: input.roleId.trim() ? input.roleId.trim() : null,
+        manager: optionalPayloadValue(input.manager),
+        delegatedApproverId: optionalPayloadValue(input.delegatedApproverId),
+        team: optionalPayloadValue(input.team),
+        vertical: optionalPayloadValue(input.vertical),
+        country: optionalPayloadValue(input.country),
+        stateProvince: optionalPayloadValue(input.stateProvince),
+        region: optionalPayloadValue(input.region),
+        city: optionalPayloadValue(input.city),
+        zipPostalCode: optionalPayloadValue(input.zipPostalCode),
+        street: optionalPayloadValue(input.street),
+        employeeId: optionalPayloadValue(input.employeeId),
+        title: optionalPayloadValue(input.title),
+        language: optionalPayloadValue(input.language),
+        timeZone: optionalPayloadValue(input.timeZone),
+        joiningDate: optionalPayloadValue(input.joiningDate),
+        resignationDate: optionalPayloadValue(input.resignationDate),
+    };
 }

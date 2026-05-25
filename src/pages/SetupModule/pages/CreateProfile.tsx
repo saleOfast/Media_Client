@@ -52,7 +52,7 @@ const CreateProfile = () => {
     };
 
     return (
-        <div className="w-full min-h-[calc(100vh-180px)] rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="h-full min-h-0 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between">
                 <div>
                     <p className="text-[17px] font-semibold text-black">Create New Profile</p>

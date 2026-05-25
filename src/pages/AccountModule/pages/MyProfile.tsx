@@ -20,6 +20,7 @@ const MyProfile = () => {
     const display = (value: string | undefined | null) => (value && value.trim() ? value.trim() : "—");
 
     return (
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
         <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -56,6 +57,7 @@ const MyProfile = () => {
                     </div>
                 )}
             </div>
+        </div>
         </div>
     );
 };

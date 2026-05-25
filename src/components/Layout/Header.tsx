@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { clearAuthSession, getStoredUser } from "../../lib/authStorage";
+import { clearCredentials } from "../../store/authSlice";
+import { useAppDispatch, useAppSelector } from "../../store/hooks";
+import { selectAuthUser, selectCanAccessSetup } from "../../store/permissionSelectors";
 
 function initialsFromDisplayName(name: string): string {
     const trimmed = name.trim();
@@ -19,12 +21,14 @@ function initialsFromDisplayName(name: string): string {
 }
 
 const Header = () => {
+    const dispatch = useAppDispatch();
     const navigate = useNavigate();
     const [search, setSearch] = useState("");
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const userMenuRef = useRef<HTMLDivElement>(null);
 
-    const storedUser = useMemo(() => getStoredUser(), []);
+    const storedUser = useAppSelector(selectAuthUser);
+    const canSetup = useAppSelector(selectCanAccessSetup);
     const displayName = storedUser?.displayName ?? "User";
     const roleBadge = storedUser?.role?.trim() ?? "";
     const avatarInitials = initialsFromDisplayName(displayName);
@@ -60,7 +64,7 @@ const Header = () => {
     }, [dropdownOpen]);
 
     const handleLogout = () => {
-        clearAuthSession();
+        dispatch(clearCredentials());
         setDropdownOpen(false);
         navigate("/login", { replace: true });
     };
@@ -68,11 +72,6 @@ const Header = () => {
     const goMyProfile = () => {
         setDropdownOpen(false);
         navigate("/me/profile");
-    };
-
-    const goSettings = () => {
-        setDropdownOpen(false);
-        navigate("/setup");
     };
 
     return (
@@ -113,32 +112,44 @@ const Header = () => {
                     </div>
                 </div>
 
-                {/* ── RIGHT: Setup + User dropdown + Avatar ── */}
-                <div className="flex items-center gap-4">
+                {/* ── RIGHT: Setup + User ── */}
+                <div className="flex items-center gap-3">
+                    {canSetup ? (
+                        <>
+                            <NavLink
+                                to="/setup"
+                                className={({ isActive }) =>
+                                    `flex items-center gap-1 text-[11px] font-medium transition-colors ${
+                                        isActive
+                                            ? "text-blue-600"
+                                            : "text-gray-600 hover:text-blue-600"
+                                    }`
+                                }
+                            >
+                                <svg
+                                    className="h-4 w-4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth={1.8}
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                                    />
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                    />
+                                </svg>
+                                Setup
+                            </NavLink>
+                            <div className="h-6 w-px bg-gray-300" />
+                        </>
+                    ) : null}
 
-                    {/* Setup link */}
-                    <button type="button" className="flex items-center gap-1 text-sm text-gray-600 hover:text-blue-600 transition-colors">
-                        <svg
-                            className="w-4 h-4 text-gray-500"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth={1.8}
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                            />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <NavLink to="/setup"><span className="text-[11px] font-bold">Setup</span></NavLink>
-                    </button>
-
-                    {/* Divider */}
-                    <div className="w-px h-6 bg-gray-300" />
-
-                    {/* User menu: both triggers + dropdown; ref used for outside-click close */}
                     <div ref={userMenuRef} className="flex items-center gap-3">
                         <div className="relative">
                             <button
@@ -185,14 +196,6 @@ const Header = () => {
                                         onClick={goMyProfile}
                                     >
                                         My Profile
-                                    </button>
-                                    <button
-                                        type="button"
-                                        role="menuitem"
-                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                        onClick={goSettings}
-                                    >
-                                        Settings
                                     </button>
                                     <div className="border-t border-gray-100 my-1" />
                                     <button

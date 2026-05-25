@@ -1,28 +1,28 @@
 import { Outlet, NavLink } from "react-router-dom";
+import SessionPermissionsRefresh from "../SessionPermissionsRefresh";
 import Header from "./Header";
+import { useAppSelector } from "../../store/hooks";
+import { selectNavItems } from "../../store/permissionSelectors";
 
 const MainLayout = () => {
+    const navItems = useAppSelector(selectNavItems);
+
     return (
-        <div>
+        <div className="flex h-full min-h-screen flex-col overflow-hidden">
+            <SessionPermissionsRefresh />
             <Header />
 
-            {/* top navigation */}
-            <div className="flex gap-6 p-3 border-b text-[11px] ">
-                <NavLink to="/home">Home</NavLink>
-
-                <NavLink to="/accounts">Accounts</NavLink>
-
-                <NavLink to="/contacts">Contacts</NavLink>
-
-                <NavLink to="/projects">Projects</NavLink>
-
-                <NavLink to="/inventory">Inventory</NavLink>
-
-                <NavLink to="/setup">Setup</NavLink>
+            <div className="flex shrink-0 gap-6 border-b p-3 text-[11px]">
+                {navItems.map((item) => (
+                    <NavLink key={item.path} to={item.path}>
+                        {item.label}
+                    </NavLink>
+                ))}
             </div>
 
-            {/* page content */}
-            <Outlet />
+            <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <Outlet />
+            </main>
         </div>
     );
 };

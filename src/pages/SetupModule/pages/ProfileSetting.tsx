@@ -1,10 +1,11 @@
 import { Activity, Building2, PlusCircle, Shield, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type {
     ProfileApiItem,
     ProfileEffectivePermissionItem,
     ProfileFieldPermissionItem,
+    ProfileTabPermissionItem,
     SaveProfileFieldPermissionPayload,
     TabPermissionCatalogItem,
 } from "../../../api/profiles";
@@ -12,6 +13,8 @@ import {
     deleteProfile,
     fetchProfileEffectivePermissions,
     fetchProfileFieldPermissions,
+    fetchProfileTabPermissions,
+    fetchProfileUserPermissions,
     fetchProfiles,
     fetchTabPermissionsCatalog,
     saveProfileFieldPermission,
@@ -19,8 +22,11 @@ import {
     saveProfileTablePermission,
     updateProfile,
 } from "../../../api/profiles";
+import { updatePermissions } from "../../../store/authSlice";
+import { store } from "../../../store";
 import DynamicTable from "../../../components/DynamicTable";
 import { useToast } from "../../../components/ToastProvider";
+import { resolveTabRoute } from "../../../lib/navConfig";
 import type { Column } from "../../../Types/Table";
 
 export interface ProfileRow {
@@ -37,8 +43,7 @@ export interface ProfileRow {
 interface TabPermissionRow {
     id: string;
     tabName: string;
-    isVisible: boolean;
-    readOnly: boolean;
+    /** UI "Default On" ↔ API `isVisible` */
     defaultOn: boolean;
     description: string;
 }
@@ -149,18 +154,59 @@ function getCatalogBoolean(item: TabPermissionCatalogItem, keys: string[], fallb
 function mapCatalogItemToRow(item: TabPermissionCatalogItem, index: number): TabPermissionRow {
     const tabName = getCatalogString(
         item,
-        ["tabName", "name", "label", "displayName", "navigationItem", "key"],
+        ["tabName", "tableName", "key", "name", "navigationItem"],
         `Tab ${index + 1}`
     );
 
     return {
-        id: getCatalogString(item, ["id", "key", "name", "tabName"], `tab-${index}`),
+        id: getCatalogString(item, ["id", "key", "tabName", "tableName", "name"], `tab-${index}`),
         tabName,
-        isVisible: getCatalogBoolean(item, ["isVisible", "visible", "enabled"], true),
-        readOnly: getCatalogBoolean(item, ["readOnly", "isReadOnly"], false),
-        defaultOn: getCatalogBoolean(item, ["defaultOn", "isDefault", "enabled", "defaultEnabled"], true),
-        description: getCatalogString(item, ["description", "helpText", "summary"], "—"),
+        defaultOn: getCatalogBoolean(item, ["isVisible", "visible", "defaultOn", "enabled"], true),
+        description: getCatalogString(
+            item,
+            ["description", "helpText", "summary", "label", "displayName"],
+            "—"
+        ),
     };
+}
+
+function resolveSavedTabPermission(
+    savedByTab: Map<string, ProfileTabPermissionItem>,
+    tabName: string
+): ProfileTabPermissionItem | undefined {
+    const key = normalizePermissionKey(tabName);
+    if (savedByTab.has(key)) {
+        return savedByTab.get(key);
+    }
+    const withoutSuffix = key.replace(/__c$/, "");
+    if (withoutSuffix && savedByTab.has(withoutSuffix)) {
+        return savedByTab.get(withoutSuffix);
+    }
+    if (!key.endsWith("__c") && savedByTab.has(`${key}__c`)) {
+        return savedByTab.get(`${key}__c`);
+    }
+    return undefined;
+}
+
+function applyProfileTabPermissions(
+    rows: TabPermissionRow[],
+    savedItems: ProfileTabPermissionItem[]
+): TabPermissionRow[] {
+    const savedByTab = new Map<string, ProfileTabPermissionItem>();
+    savedItems.forEach((item) => {
+        savedByTab.set(normalizePermissionKey(item.tabName), item);
+    });
+
+    return rows.map((row) => {
+        const saved = resolveSavedTabPermission(savedByTab, row.tabName);
+        if (!saved) {
+            return row;
+        }
+        return {
+            ...row,
+            defaultOn: saved.isVisible,
+        };
+    });
 }
 
 function mapFieldPermissionItem(item: ProfileFieldPermissionItem): FieldPermissionRow {
@@ -201,35 +247,53 @@ function normalizePermissionKey(value: string): string {
     return value.trim().toLowerCase();
 }
 
-function applyEffectivePermissions(
-    rows: TabPermissionRow[],
-    effectiveItems: ProfileEffectivePermissionItem[]
-): TabPermissionRow[] {
-    const effectiveByTab = new Map<string, ProfileEffectivePermissionItem>();
+function getTabNameFromCatalogItem(item: TabPermissionCatalogItem): string {
+    return getCatalogString(item, ["tabName", "tableName", "key", "name", "navigationItem"], "");
+}
 
-    effectiveItems.forEach((item) => {
-        const tabName = getCatalogString(item, ["tabName", "name", "key"]);
-        if (tabName) {
-            effectiveByTab.set(normalizePermissionKey(tabName), item);
+/** Catalog returns pairs like `account` + `account__c` — keep one row per tab (prefer `__c`). */
+function deduplicateTabCatalogItems(items: TabPermissionCatalogItem[]): TabPermissionCatalogItem[] {
+    const byBase = new Map<string, TabPermissionCatalogItem>();
+
+    for (const item of items) {
+        const tabName = getTabNameFromCatalogItem(item);
+        if (!tabName) {
+            continue;
         }
-    });
-
-    return rows.map((row) => {
-        const effective = effectiveByTab.get(normalizePermissionKey(row.tabName));
-        if (!effective) {
-            return row;
+        const baseKey = normalizePermissionKey(tabName).replace(/__c$/, "");
+        const existing = byBase.get(baseKey);
+        if (!existing) {
+            byBase.set(baseKey, item);
+            continue;
         }
+        const existingName = getTabNameFromCatalogItem(existing);
+        if (
+            normalizePermissionKey(tabName).endsWith("__c") &&
+            !normalizePermissionKey(existingName).endsWith("__c")
+        ) {
+            byBase.set(baseKey, item);
+        }
+    }
 
-        return {
-            ...row,
-            isVisible: getCatalogBoolean(effective, ["isVisible", "visible", "enabled"], row.isVisible),
-            defaultOn: getCatalogBoolean(
-                effective,
-                ["isDefaultNav", "defaultOn", "isDefault", "defaultEnabled"],
-                row.defaultOn
-            ),
-        };
+    return Array.from(byBase.values()).sort((a, b) => {
+        const nameA = getTabNameFromCatalogItem(a);
+        const nameB = getTabNameFromCatalogItem(b);
+        const orderA = resolveTabRoute(nameA)?.order ?? 99;
+        const orderB = resolveTabRoute(nameB)?.order ?? 99;
+        return orderA - orderB || nameA.localeCompare(nameB);
     });
+}
+
+function sortTabPermissionRows(rows: TabPermissionRow[]): TabPermissionRow[] {
+    return [...rows].sort((a, b) => {
+        const orderA = resolveTabRoute(a.tabName)?.order ?? 99;
+        const orderB = resolveTabRoute(b.tabName)?.order ?? 99;
+        return orderA - orderB || a.tabName.localeCompare(b.tabName);
+    });
+}
+
+function getTabDisplayLabel(tabName: string): string {
+    return resolveTabRoute(tabName)?.label ?? tabName;
 }
 
 function applyTableEffectivePermissions(
@@ -267,6 +331,7 @@ function applyTableEffectivePermissions(
 
 const ProfileSetting = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { showToast } = useToast();
     const [activeTab, setActiveTab] = useState("all-profiles");
     const [profiles, setProfiles] = useState<ProfileRow[]>([]);
@@ -339,8 +404,13 @@ const ProfileSetting = () => {
         setTablePermissionError(null);
         try {
             const items = await fetchTabPermissionsCatalog();
+            const dedupedTabs = deduplicateTabCatalogItems(items);
             const tableRows = items.map((item, index) => mapCatalogItemToTableRow(item, index));
-            setTabPermissionRows(items.map((item, index) => mapCatalogItemToRow(item, index)));
+            setTabPermissionRows(
+                sortTabPermissionRows(
+                    dedupedTabs.map((item, index) => mapCatalogItemToRow(item, index))
+                )
+            );
             setTablePermissionRows(tableRows);
             setTabPermissionEffectiveProfileId("");
             setTablePermissionEffectiveProfileId("");
@@ -384,6 +454,28 @@ const ProfileSetting = () => {
         }
     }, []);
 
+    const loadProfileTabPermissionsForProfile = useCallback(async (profileId: string) => {
+        if (!profileId) {
+            return;
+        }
+
+        setTabPermissionSyncing(true);
+        setTabPermissionError(null);
+        try {
+            const savedItems = await fetchProfileTabPermissions(profileId);
+            setTabPermissionRows((current) =>
+                sortTabPermissionRows(applyProfileTabPermissions(current, savedItems))
+            );
+            setTabPermissionEffectiveProfileId(profileId);
+        } catch (error) {
+            setTabPermissionError(
+                error instanceof Error ? error.message : "Failed to load tab permissions"
+            );
+        } finally {
+            setTabPermissionSyncing(false);
+        }
+    }, []);
+
     const loadProfileEffectivePermissions = useCallback(
         async (profileId: string, scope: "tab" | "table" | "both" = "both") => {
             if (!profileId) {
@@ -398,18 +490,23 @@ const ProfileSetting = () => {
                 setTablePermissionError(null);
             }
             try {
-                const effectiveItems = await fetchProfileEffectivePermissions(profileId);
                 if (scope === "tab" || scope === "both") {
-                    setTabPermissionRows((current) => applyEffectivePermissions(current, effectiveItems));
+                    const savedItems = await fetchProfileTabPermissions(profileId);
+                    setTabPermissionRows((current) =>
+                        sortTabPermissionRows(applyProfileTabPermissions(current, savedItems))
+                    );
+                    setTabPermissionEffectiveProfileId(profileId);
                 }
                 if (scope === "table" || scope === "both") {
+                    const effectiveItems = await fetchProfileEffectivePermissions(profileId);
                     setTablePermissionRows((current) =>
                         applyTableEffectivePermissions(current, effectiveItems)
                     );
+                    setTablePermissionEffectiveProfileId(profileId);
                 }
             } catch (error) {
                 const message =
-                    error instanceof Error ? error.message : "Failed to load effective permissions";
+                    error instanceof Error ? error.message : "Failed to load permissions";
                 if (scope === "tab" || scope === "both") {
                     setTabPermissionError(message);
                 }
@@ -417,12 +514,6 @@ const ProfileSetting = () => {
                     setTablePermissionError(message);
                 }
             } finally {
-                if (scope === "tab" || scope === "both") {
-                    setTabPermissionEffectiveProfileId(profileId);
-                }
-                if (scope === "table" || scope === "both") {
-                    setTablePermissionEffectiveProfileId(profileId);
-                }
                 setTabPermissionSyncing(false);
             }
         },
@@ -446,11 +537,11 @@ const ProfileSetting = () => {
             return;
         }
         if (tabPermissionEffectiveProfileId !== selectedProfile) {
-            void loadProfileEffectivePermissions(selectedProfile, "tab");
+            void loadProfileTabPermissionsForProfile(selectedProfile);
         }
     }, [
         activeTab,
-        loadProfileEffectivePermissions,
+        loadProfileTabPermissionsForProfile,
         selectedProfile,
         tabPermissionEffectiveProfileId,
         tabPermissionSyncing,
@@ -472,7 +563,10 @@ const ProfileSetting = () => {
     ]);
 
     const updateTabPermissionRow = useCallback(
-        (rowId: string, updates: Partial<Pick<TabPermissionRow, "isVisible" | "defaultOn">>) => {
+        (
+            rowId: string,
+            updates: Partial<Pick<TabPermissionRow, "defaultOn">>
+        ) => {
             setTabPermissionRows((current) =>
                 current.map((row) => (row.id === rowId ? { ...row, ...updates } : row))
             );
@@ -607,13 +701,24 @@ const ProfileSetting = () => {
                 tabPermissionRows.map((row) =>
                     saveProfileTabPermission(selectedProfile, {
                         tabName: row.tabName,
-                        isVisible: row.isVisible,
-                        isDefaultNav: row.defaultOn,
+                        isVisible: row.defaultOn,
                     })
                 )
             );
-            await loadProfileEffectivePermissions(selectedProfile, "tab");
-            showToast("Tab permissions saved successfully");
+            await loadProfileTabPermissionsForProfile(selectedProfile);
+
+            const currentProfileId = store.getState().auth.user?.profileId;
+            if (currentProfileId && currentProfileId === selectedProfile) {
+                const fresh = await fetchProfileUserPermissions(selectedProfile);
+                if (fresh) {
+                    store.dispatch(updatePermissions(fresh));
+                }
+                showToast("Tab permissions saved. Your navigation has been updated.");
+            } else {
+                showToast(
+                    "Tab permissions saved. Assigned users must log out and log in again to see changes."
+                );
+            }
         } catch (error) {
             setTabPermissionError(error instanceof Error ? error.message : "Failed to save tab permissions");
         } finally {
@@ -629,6 +734,18 @@ const ProfileSetting = () => {
         setEditDescription(row.description);
         setEditCanSetup(row.canSetup);
     }, []);
+
+    useEffect(() => {
+        const editProfileId = (location.state as { editProfileId?: string } | null)?.editProfileId;
+        if (!editProfileId || profiles.length === 0) {
+            return;
+        }
+        const row = profiles.find((profile) => profile.id === editProfileId);
+        if (row) {
+            openEdit(row);
+            navigate("/setup/profile", { replace: true, state: {} });
+        }
+    }, [location.state, navigate, openEdit, profiles]);
 
     const closeEdit = useCallback(() => {
         setEditingProfile(null);
@@ -682,7 +799,19 @@ const ProfileSetting = () => {
 
     const profileColumns: Column<ProfileRow>[] = useMemo(
         () => [
-            { title: "Profile Name", dataIndex: "profileName" },
+            {
+                title: "Profile Name",
+                dataIndex: "profileName",
+                render: (value, row) => (
+                    <button
+                        type="button"
+                        className="text-left font-medium text-blue-700 hover:underline"
+                        onClick={() => navigate(`/setup/profile/${row.id}`)}
+                    >
+                        {String(value)}
+                    </button>
+                ),
+            },
             { title: "Description", dataIndex: "description" },
             { title: "Users", dataIndex: "users" },
             { title: "Department", dataIndex: "department" },
@@ -697,6 +826,14 @@ const ProfileSetting = () => {
                 title: "Actions",
                 render: (_value, row) => (
                     <span className="inline-flex flex-wrap items-center gap-1 text-[11px]">
+                        <button
+                            type="button"
+                            className="text-blue-700 hover:underline"
+                            onClick={() => navigate(`/setup/profile/${row.id}`)}
+                        >
+                            View
+                        </button>
+                        <span className="text-black/30">|</span>
                         <button
                             type="button"
                             className="text-blue-700 hover:underline"
@@ -719,7 +856,7 @@ const ProfileSetting = () => {
                 ),
             },
         ],
-        [openEdit]
+        [navigate, openEdit]
     );
 
     const totalProfiles = profiles.length;
@@ -744,7 +881,7 @@ const ProfileSetting = () => {
         profiles.find((profile) => profile.id === selectedProfile)?.profileName ?? "";
 
     return (
-        <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm h-100">
+        <div className="h-full min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
                 <div>
                     <p className="text-[16px] font-semibold text-slate-800 tracking-wide">Profile Management</p>
@@ -816,17 +953,18 @@ const ProfileSetting = () => {
                     Table Permissions
                 </button>
                 <button
-                    className={`border rounded p-1 text-[11px] ${activeTab === "field-permissions" ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white"}`}
-                    onClick={() => setActiveTab("field-permissions")}
-                >
-                    Field Permissions
-                </button>
-                <button
                     className={`border rounded p-1 text-[11px] ${activeTab === "record-type-access" ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white"}`}
                     onClick={() => setActiveTab("record-type-access")}
                 >
                     Record Type Access
                 </button>
+                <button
+                    className={`border rounded p-1 text-[11px] ${activeTab === "field-permissions" ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white"}`}
+                    onClick={() => setActiveTab("field-permissions")}
+                >
+                    Field Permissions
+                </button>
+
             </div>
 
             {activeTab === "all-profiles" ? (
@@ -899,20 +1037,22 @@ const ProfileSetting = () => {
                                     <tbody>
                                         {tabPermissionLoading ? (
                                             <tr className="border-t border-slate-100">
-                                                <td colSpan={4} className="px-2 py-4 text-center text-slate-500">
+                                                <td colSpan={3} className="px-2 py-4 text-center text-slate-500">
                                                     Loading tab permissions catalog...
                                                 </td>
                                             </tr>
                                         ) : tabPermissionError ? (
                                             <tr className="border-t border-slate-100">
-                                                <td colSpan={4} className="px-2 py-4 text-center text-red-600">
+                                                <td colSpan={3} className="px-2 py-4 text-center text-red-600">
                                                     {tabPermissionError}
                                                 </td>
                                             </tr>
                                         ) : tabPermissionRows.length > 0 ? (
                                             tabPermissionRows.map((row) => (
                                                 <tr key={row.id} className="border-t border-slate-100">
-                                                    <td className="px-2 py-1 font-medium">{row.tabName}</td>
+                                                    <td className="px-2 py-1 font-medium">
+                                                        {getTabDisplayLabel(row.tabName)}
+                                                    </td>
 
                                                     <td className="px-2 py-1 text-center">
                                                         <input
@@ -931,7 +1071,7 @@ const ProfileSetting = () => {
                                             ))
                                         ) : (
                                             <tr className="border-t border-slate-100">
-                                                <td colSpan={4} className="px-2 py-4 text-center text-slate-500">
+                                                <td colSpan={3} className="px-2 py-4 text-center text-slate-500">
                                                     No tab permission catalog items returned from API.
                                                 </td>
                                             </tr>
@@ -1242,7 +1382,7 @@ const ProfileSetting = () => {
                                             <th className="px-2 py-1 text-center">Mandatory</th>
                                             <th className="px-2 py-1 text-center">Read only</th>
                                             <th className="px-2 py-1 text-center">Editable</th>
-                                            <th className="px-2 py-1 text-center">Permission</th>
+                                            {/* <th className="px-2 py-1 text-center">Permission</th> */}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -1323,7 +1463,7 @@ const ProfileSetting = () => {
                                                             aria-label={`Editable for ${row.fieldLabel}`}
                                                         />
                                                     </td>
-                                                    <td className="px-2 py-1 text-center">
+                                                    {/* <td className="px-2 py-1 text-center">
                                                         <input
                                                             type="checkbox"
                                                             className="block mx-auto"
@@ -1337,7 +1477,7 @@ const ProfileSetting = () => {
                                                             }
                                                             aria-label={`Permission for ${row.fieldLabel}`}
                                                         />
-                                                    </td>
+                                                    </td> */}
                                                 </tr>
                                             ))
                                         ) : (

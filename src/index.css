@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 button,
 a,
 select,
@@ -9,4 +15,91 @@ input[type="button"],
 input[type="submit"],
 [role="button"] {
   cursor: pointer;
+}
+
+/* Native checkboxes — visible box, not stretched like text inputs */
+input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  min-width: 1rem;
+  min-height: 1rem;
+  flex-shrink: 0;
+  border: 2px solid #94a3b8;
+  border-radius: 0.25rem;
+  background-color: #fff;
+  vertical-align: middle;
+  position: relative;
+}
+
+input[type="checkbox"]:checked {
+  border-color: #0f172a;
+  background-color: #0f172a;
+}
+
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 0.2rem;
+  top: 0.05rem;
+  width: 0.3rem;
+  height: 0.55rem;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid #64748b;
+  outline-offset: 2px;
+}
+
+input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@keyframes viewUserHeaderIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes viewUserContentIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes viewUserSectionIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.view-user-header-in {
+  animation: viewUserHeaderIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.view-user-content-in {
+  animation: viewUserContentIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+}
+
+.view-user-section-in {
+  animation: viewUserSectionIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

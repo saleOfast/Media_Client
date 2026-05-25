@@ -1,11 +1,15 @@
+import { Provider } from "react-redux"
 import AppRoutes from "./routes/AppRoutes"
 import { ToastProvider } from "./components/ToastProvider"
+import { store } from "./store"
 
 const App = () => {
   return (
-    <ToastProvider>
-      <AppRoutes />
-    </ToastProvider>
+    <Provider store={store}>
+      <ToastProvider>
+        <AppRoutes />
+      </ToastProvider>
+    </Provider>
   )
 }
 
